@@ -21,7 +21,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     populateCircleFilter();
     populateWardFilter(); // Populate ward filter after circles
     // Initial render might be empty until a file is uploaded or default data is loaded
-    renderReport(); 
+    renderReport();
+
+    // Update report date and time
+    const reportDateTimeElement = document.getElementById('report-date-time');
+    const now = new Date();
+    reportDateTimeElement.textContent = `Report prepared on: ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`; 
 
     document.getElementById('circle-select').addEventListener('change', renderReport);
     document.getElementById('ward-select').addEventListener('change', renderReport); // Add event listener for ward select
@@ -119,7 +124,12 @@ function parseCSV(text) {
         if (values.length === headers.length) {
             const row = {};
             for (let k = 0; k < headers.length; k++) {
-                row[headers[k]] = values[k];
+                const header = headers[k];
+                if (header === 'Phone Number') {
+                    row['Phone'] = values[k];
+                } else {
+                    row[header] = values[k];
+                }
             }
             data.push(row);
         }
@@ -181,6 +191,57 @@ function renderReport() {
     const totalComplaintsCountElement = document.getElementById('total-complaints-count');
     reportContainer.innerHTML = '';
 
+    // Calculate and display overall total complaint type counts at the top
+    const overallComplaintCounts = {};
+    ALLOWED_SUBTYPES.forEach(subtype => {
+        overallComplaintCounts[subtype] = 0; // Initialize counts
+    });
+
+    const allFilteredData = complaintData.filter(complaint => {
+        const wardNumber = complaint['Ward'] ? complaint['Ward'].split('-')[0] : '';
+        const isWardMatch = selectedWard === 'all' || wardNumber === selectedWard;
+        const isCircleMatch = selectedCircle === 'all' || (wardsByCircle[selectedCircle] && wardsByCircle[selectedCircle].includes(wardNumber));
+        return isCircleMatch && ALLOWED_SUBTYPES.includes(complaint['complaintsubtype']) && isWardMatch;
+    });
+
+    allFilteredData.forEach(complaint => {
+        const subtype = complaint['complaintsubtype'];
+        if (ALLOWED_SUBTYPES.includes(subtype)) {
+            overallComplaintCounts[subtype]++;
+        }
+    });
+
+    const overallCountsDiv = document.createElement('div');
+    overallCountsDiv.classList.add('overall-complaint-counts');
+    overallCountsDiv.innerHTML = '<h3>Overall Complaint Counts by Type:</h3>';
+
+    const overallCountsTable = document.createElement('table');
+    const overallCountsThead = document.createElement('thead');
+    const overallCountsTbody = document.createElement('tbody');
+
+    const overallCountsHeaders = [...ALLOWED_SUBTYPES];
+    const overallCountsHeaderRow = document.createElement('tr');
+    overallCountsHeaders.forEach(headerText => {
+        const th = document.createElement('th');
+        th.textContent = headerText;
+        overallCountsHeaderRow.appendChild(th);
+    });
+    overallCountsThead.appendChild(overallCountsHeaderRow);
+    overallCountsTable.appendChild(overallCountsThead);
+
+    const overallTr = document.createElement('tr');
+    ALLOWED_SUBTYPES.forEach(subtype => {
+        const td = document.createElement('td');
+        td.textContent = overallComplaintCounts[subtype] || 0;
+        td.classList.add(`subtype-${subtype.replace(/[^a-zA-Z0-9]/g, '')}-color`);
+        td.style.color = '#000000'; // Changed to black for visibility
+        overallTr.appendChild(td);
+    });
+    overallCountsTbody.appendChild(overallTr);
+    overallCountsTable.appendChild(overallCountsTbody);
+    overallCountsDiv.appendChild(overallCountsTable);
+    reportContainer.appendChild(overallCountsDiv);
+
     let overallComplaintCount = 0;
     let circlesToRender = {};
     if (selectedCircle === 'all') {
@@ -210,7 +271,7 @@ function renderReport() {
             const thead = document.createElement('thead');
             const tbody = document.createElement('tbody');
 
-            const headers = ['Sr No', 'Ward', 'Status', 'Complainttype', 'complaintsubtype', 'Complaint Registered Date', 'Complaint Detail'];
+            const headers = ['Sr No', 'Name', 'Phone', 'Ward', 'Status', 'Complainttype', 'complaintsubtype', 'Complaint Registered Date', 'Complaint Detail'];
             const headerRow = document.createElement('tr');
             headers.forEach(headerText => {
                 const th = document.createElement('th');
@@ -220,71 +281,51 @@ function renderReport() {
             thead.appendChild(headerRow);
             table.appendChild(thead);
 
-            circleData.forEach(row => {
-                const tr = document.createElement('tr');
-                headers.forEach(header => {
-                    const td = document.createElement('td');
-                    if (header === 'Complaint Registered Date' && row[header]) {
-                        const date = new Date(row[header]);
-                        td.textContent = date.toLocaleDateString(); // Format to show only the date
-                    } else {
-                        td.textContent = row[header] || '';
-                    }
-                    tr.appendChild(td);
-                });
-                tbody.appendChild(tr);
-            });
+            circleData.forEach((complaint, index) => {
+                 const tr = document.createElement('tr');
+                 headers.forEach(header => {
+                     const td = document.createElement('td');
+                     switch (header) {
+                         case 'Sr No':
+                             td.textContent = index + 1;
+                             break;
+                         case 'Name':
+                             td.textContent = complaint['Name'];
+                             break;
+                         case 'Phone':
+                             td.textContent = complaint['Phone'];
+                             break;
+                         case 'Ward':
+                             td.textContent = complaint['Ward'];
+                             break;
+                         case 'Status':
+                             td.textContent = complaint['Status'];
+                             break;
+                         case 'Complainttype':
+                             td.textContent = complaint['Complainttype'];
+                             break;
+                         case 'complaintsubtype':
+                             td.textContent = complaint['complaintsubtype'];
+                             break;
+                         case 'Complaint Registered Date':
+                             td.textContent = complaint['Complaint Registered Date'];
+                             break;
+                         case 'Complaint Detail':
+                             td.textContent = complaint['Complaint Detail'];
+                             break;
+                         default:
+                             td.textContent = complaint[header];
+                             break;
+                     }
+                     tr.appendChild(td);
+                 });
+                 tbody.appendChild(tr);
+             });
             table.appendChild(tbody);
             circleSection.appendChild(table);
 
             // Calculate and display total complaint type counts
-            const totalComplaintCounts = {};
-            ALLOWED_SUBTYPES.forEach(subtype => {
-                totalComplaintCounts[subtype] = 0; // Initialize counts
-            });
 
-            circleData.forEach(complaint => {
-                const subtype = complaint['complaintsubtype'];
-                if (ALLOWED_SUBTYPES.includes(subtype)) {
-                    totalComplaintCounts[subtype]++;
-                }
-            });
-
-            const countsDiv = document.createElement('div');
-            countsDiv.classList.add('complaint-counts-by-date');
-            countsDiv.innerHTML = '<h3>Total Complaint Counts by Type:</h3>'; // Updated heading
-
-            const countsTable = document.createElement('table');
-            const countsThead = document.createElement('thead');
-            const countsTbody = document.createElement('tbody');
-
-            const countsHeaders = [...ALLOWED_SUBTYPES];
-            const countsHeaderRow = document.createElement('tr');
-            countsHeaders.forEach(headerText => {
-                const th = document.createElement('th');
-                th.textContent = headerText;
-                countsHeaderRow.appendChild(th);
-            });
-            countsThead.appendChild(countsHeaderRow);
-            countsTable.appendChild(countsThead);
-
-            // Single row for total counts
-            const tr = document.createElement('tr');
-            ALLOWED_SUBTYPES.forEach(subtype => {
-                const td = document.createElement('td');
-                td.textContent = totalComplaintCounts[subtype] || 0;
-                td.style.backgroundColor = SUBTYPE_COLORS[subtype];
-                td.style.color = '#FFFFFF';  // White text for visibility
-                tr.appendChild(td);
-            });
-            countsTbody.appendChild(tr);
-            countsTable.appendChild(countsTbody);
-            countsDiv.appendChild(countsTable);
-            circleSection.appendChild(countsDiv);
-            const circleTotalComplaints = document.createElement('p');
-            circleTotalComplaints.classList.add('circle-total');
-            circleTotalComplaints.textContent = `Total Complaints for ${circleName}: ${circleData.length}`;
-            circleSection.appendChild(circleTotalComplaints);
 
             overallComplaintCount += circleData.length;
         } else {
